@@ -108,7 +108,7 @@ fviz_gap_stat(gap_stat) + labs(subtitle = "Gap Statistic")
 # (c) K-means clustering
 
 # Perform k-means clustering with k=2
-kmeans.results <- kmeans(wine.data, centers = 2, nstart = 25)
+kmeans.results <- kmeans(wine.data, centers = 3, nstart = 25)
 
 # Cluster assignments for each data point
 cluster.assignment <- kmeans.results$cluster
