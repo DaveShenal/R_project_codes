@@ -13,12 +13,12 @@ setwd(current_dir)
 getwd()
 
 # Read the Excel file
-data <- read_excel("../Data/Whitewine_v6.xlsx", sheet = 1)
+data <- read_excel("../Data/Whitewine_v6.xlsx")
 head(data)
 str(data)
 
 # Check for missing values
-sum(is.na(data))  # Check for missing values
+sum(is.na(data))
 
 # Select the first 11 attributes
 wine.data <- data[1:11]

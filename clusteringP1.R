@@ -14,7 +14,7 @@ getwd()
 
 
 # Read the Excel file
-data <- read_excel("../Data/Whitewine_v6.xlsx", sheet = 1)
+data <- read_excel("../Data/Whitewine_v6.xlsx")
 head(data)
 str(data)
 
