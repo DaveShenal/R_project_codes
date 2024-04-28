@@ -18,29 +18,46 @@ head(data)
 sum(is.na(data))
 
 # Plot index(x), rate(y)
-plot(data$`YYYY/MM/DD`, data$`USD/EUR`, 
-     type = "l", main = "Exchange Rate Data",
-     xlab = "Date", ylab = "USD/EUR Rate")
+# plot(data$`YYYY/MM/DD`, data$`USD/EUR`, 
+#      type = "l", main = "Exchange Rate Data",
+#      xlab = "Date", ylab = "USD/EUR Rate")
 
-# Extract USD/EUR exchange rates (assuming it's the 3rd column)
+# Extract USD/EUR exchange rates
 exchange.rates <- data[, 3]
+
+
+
+
 
 # 1. Preprocessing and Splitting Data
 
-# Define training and testing data split (400 for training, remaining for testing)
+
+# Define training and testing data split
 training_data <- exchange.rates[1:400, "USD/EUR"]
 testing_data <- exchange.rates[401:500, "USD/EUR"]
 
-# Normalize data (e.g., min-max scaling)
+# Normalize data (min-max scaling)
 normalize <- function(x) {
   return((x - min(x)) / (max(x) - min(x)))
+}
+
+# Denormalize data (reverse min-max scaling)
+denormalize <- function(x, original_data) {
+  min_original <- min(original_data)
+  max_original <- max(original_data)
+  denormalized <- x * (max_original - min_original) + min_original
+  return(denormalized)
 }
 
 normalized_training_data <- normalize(training_data)
 normalized_testing_data <- normalize(testing_data)
 
 
-# 2 Experimenting with AR Lags and I/O Matrix Creation
+
+
+
+# 2 AR Lags and I/O Matrix Creation
+
 
 # Define function to create I/O matrices for a given lag
 create_io_matrices <- function(data, lag) {
@@ -58,57 +75,87 @@ create_io_matrices <- function(data, lag) {
   return(list(input = input_matrix, output = output_matrix))
 }
 
-
 # Experiment with different lags (e.g., 1, 2, 3, 4)
-lag_options <- c(1, 2, 3, 4)
+lag_options <- c()
 io_matrices <- lapply(lag_options, function(lag) create_io_matrices(normalized_training_data, lag))
 io_matrices_test <- lapply(lag_options, function(lag) create_io_matrices(normalized_testing_data, lag))
+
+
+
+
 
 # 3 Building and Evaluating MLP Models
 
 
+print_first_80_comparison <- function(data1, data2) {
+  # Check if data structures are numeric vectors of the same length
+  
+  # Limit to the first 80 elements
+  data1 <- data1[1:min(length(data1), 80)]
+  data2 <- data2[1:min(length(data2), 80)]
+  
+  # Print comparison header
+  cat("   ***Comparison of First 80 Values***\n")
+  cat("Index | Predicated Rate      | Actual Rate\n")
+  cat("------|----------------------|-------------\n")
+  
+  # Print values in a formatted table
+  for (i in 1:length(data1)) {
+    cat(sprintf("%-5d | %-20.6f | %-10.6f\n", i, data1[i], data2[i]))
+  }
+}
+
+
 # Define function to train and evaluate an MLP model
-train_and_evaluate_model <- function(input_matrix, output_matrix, hidden_layers, nodes_per_layer, activation_function, testing_data) {
+train_and_evaluate_model <- function(input_matrix, output_matrix, 
+                                     hidden_layer_structure, 
+                                     activation_function, 
+                                     testing_matrix, testing_data) {
   # Define formula
   formula <- as.formula(paste("output_matrix ~", paste(colnames(input_matrix), collapse = " + "), sep=""))
   
   # Define model structure
   model <- neuralnet(formula, data = cbind(input_matrix, output_matrix), 
-                     hidden = c(rep(nodes_per_layer, hidden_layers)),
-                     linear.output = TRUE, 
+                     hidden = hidden_layer_structure,
+                     linear.output = FALSE, 
                      act.fct = activation_function)
   
   # Make predictions on testing data
-  predictions <- predict(model, newdata = testing_data$input)
+  predictions <- predict(model, newdata = testing_matrix$input)
   
-
+  denormalized_predictions <- denormalize(predictions, testing_data)
+  denormalized_testing_outputs <- denormalize(testing_matrix$output, testing_data)
+  
+  # print_first_80_comparison(denormalized_predictions, denormalized_testing_outputs)
+  
   # Calculate evaluation metrics
-  rmse <- sqrt(mean((predictions - testing_data$output)^2))
-  mae <- mean(abs(predictions - testing_data$output))
-  # Calculate MAPE (Mean Absolute Percentage Error)
-  mape <- mean(ifelse(testing_data$output != 0, 
-                      abs(predictions - testing_data$output) / testing_data$output * 100, 0))
-  smape <- mean(abs(predictions - testing_data$output) / (abs(predictions) + abs(testing_data$output)) * 200)
+  rmse <- sqrt(mean((denormalized_predictions - denormalized_testing_outputs)^2))
+  mae <- mean(abs(denormalized_predictions - denormalized_testing_outputs))
+  mape <- mean(ifelse(denormalized_testing_outputs != 0, 
+                      abs(denormalized_predictions - denormalized_testing_outputs) / denormalized_testing_outputs * 100, 0))
+  smape <- mean(abs(denormalized_predictions - denormalized_testing_outputs) / (abs(denormalized_predictions) + abs(denormalized_testing_outputs)) * 200)
   
   
-  return(list(model = model, rmse = rmse, mae = mae, mape = mape, smape = smape))
+  return(list(model = model, rmse = rmse, mae = mae, mape = mape, smape = smape, denormalized_predictions = denormalized_predictions))
 }
+
+hidden_layer_structure <- c(8,8)
 
 # Experiment with different network structures and activation functions
 models <- list()
-for (lag in lag_options) {
-  input_matrix <- io_matrices[[lag]]$input  # Access input matrix for current lag
-  output_matrix <- io_matrices[[lag]]$output  # Access output matrix for current lag
-  testing_data <- io_matrices_test[[lag]] # Access output matrix
-  for (hidden_layers in c(2)){
-    for (nodes in c(8)){
-      for (activation in c("tanh", "logistic")) {
-        # Call the function to train and evaluate the model
-        model_result <- train_and_evaluate_model(input_matrix, output_matrix, hidden_layers, nodes, activation, testing_data)
-        # Append the model results to a list for each configuration
-        models[[paste(lag, hidden_layers, nodes, activation, sep = "_")]] <- model_result
-      }
-    }
+for (i in 1:length(io_matrices)) {
+  input_matrix <- io_matrices[[i]]$input  # Access input matrix for current lag
+  output_matrix <- io_matrices[[i]]$output  # Access output matrix for current lag
+  testing_matrix <- io_matrices_test[[i]] # Access output matrix
+  for (activation in c("logistic")) {
+    # Call the function to train and evaluate the model
+    model_result <- train_and_evaluate_model(input_matrix, output_matrix, 
+                                             hidden_layer_structure, 
+                                             activation, 
+                                             testing_matrix, testing_data)
+    
+    # Append the model results to a list for each configuration
+    models[[paste(i, paste(hidden_layer_structure, collapse = "_"), activation, sep = "_")]] <- model_result
   }
 }
 
@@ -119,11 +166,20 @@ for (model_name in names(models)) {
   cat("Model Name:", model_name, "\n")
   cat("RMSE:", models[[model_name]]$rmse, "\n")
   cat("MAE:", models[[model_name]]$mae, "\n")
-  if (is.finite(models[[model_name]]$mape)) {
-    cat("MAPE:", models[[model_name]]$mape, "\n")
-  } else {
-    cat("MAPE: Cannot be computed (infinity)\n")
-  }
+  cat("MAPE:", models[[model_name]]$mape, "\n")
   cat("SMAPE:", models[[model_name]]$smape, "\n\n")
 }
+
+
+# get_model_by_name <- models[["1_2_3_logistic"]]
+# 
+# plot(get_model_by_name$model)
+# 
+# 
+# denormalized_testing_outputs <- denormalize(io_matrices_test[[1]]$output, testing_data)
+# 
+# # Plot predicted vs actual values
+# plot(denormalized_testing_outputs, type = "l", col = "blue", xlab = "Index", ylab = "Value", main = "Predicted vs Actual Values")
+# lines(get_model_by_name$denormalized_predictions, col = "red")
+# legend("topleft", legend = c("Actual", "Predicted"), col = c("blue", "red"), lty = 1)
 
