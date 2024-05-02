@@ -14,6 +14,7 @@ data <- read_excel("../Data/ExchangeUSD.xlsx")
 
 # Extract USD/EUR exchange rates
 exchange.rates <- data[, 3]
+head(exchange.rates)
 
 # 1. Preprocessing and Splitting Data
 
@@ -25,6 +26,14 @@ testing_data <- exchange.rates[401:500, "USD/EUR"]
 # Normalize data (min-max scaling)
 normalize <- function(x) {
   return((x - min(x)) / (max(x) - min(x)))
+}
+
+# Denormalize data (reverse min-max scaling)
+denormalize <- function(x, original_data) {
+  min_original <- min(original_data)
+  max_original <- max(original_data)
+  denormalized <- x * (max_original - min_original) + min_original
+  return(denormalized)
 }
 
 normalized_training_data <- normalize(training_data)
@@ -52,12 +61,21 @@ create_io_matrices <- function(data, lag) {
 
 
 # Experiment with different lags (e.g., 1, 2, 3, 4)
-lag_options <- c(1)
+lag_options <- c(1,2,3,4)
 io_matrices <- lapply(lag_options, function(lag) create_io_matrices(normalized_training_data, lag))
 io_matrices_test <- lapply(lag_options, function(lag) create_io_matrices(normalized_testing_data, lag))
 
 head(io_matrices[[1]]$input)
 head(io_matrices[[1]]$output)
+
+head(io_matrices[[2]]$input)
+head(io_matrices[[2]]$output)
+
+head(io_matrices[[3]]$input)
+head(io_matrices[[3]]$output)
+
+head(io_matrices[[4]]$input)
+head(io_matrices[[4]]$output)
 
 # 3 Building and Evaluating MLP Models
 
@@ -69,7 +87,7 @@ train_neural_network <- function(input_data, output_data, hidden_layers, activat
   # Define model structure
   model <- neuralnet(formula, data = cbind(input_data, output_data), 
                      hidden = hidden_layers,
-                     linear.output = FALSE, 
+                     linear.output = TRUE, 
                      act.fct = activation_function,
                      learningrate = learning_rate,
                      algorithm = "sag")
@@ -83,13 +101,16 @@ model <- train_neural_network(
   io_matrices[[1]]$input, # input matrix
   io_matrices[[1]]$output, # output matrix
   c(2,3), # node structure
-  "tanh", # activation
+  "logistic", # activation
   0.01) # learning rate
 
 
 
 # Make predictions on testing data
 predictions <- predict(model, newdata = io_matrices_test[[1]]$input)
+
+denormalized_predictions <- denormalize(predictions, testing_data)
+denormalized_testing_outputs <- denormalize(io_matrices_test[[1]]$output, testing_data)
 
 
 calculate_evaluation_metrics <- function(predictions, actual) {
@@ -114,7 +135,7 @@ calculate_evaluation_metrics <- function(predictions, actual) {
   
 }
 
-calculate_evaluation_metrics(predictions, io_matrices_test[[1]]$output)
+calculate_evaluation_metrics(denormalized_predictions, denormalized_testing_outputs)
 
 plot(model)
 

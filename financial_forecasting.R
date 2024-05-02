@@ -33,6 +33,7 @@ exchange.rates <- data[, 3]
 
 
 # Define training and testing data split
+set.seed(123)
 training_data <- exchange.rates[1:400, "USD/EUR"]
 testing_data <- exchange.rates[401:500, "USD/EUR"]
 
@@ -76,12 +77,9 @@ create_io_matrices <- function(data, lag) {
 }
 
 # Experiment with different lags (e.g., 1, 2, 3, 4)
-lag_options <- c()
+lag_options <- c(1,2,3,4)
 io_matrices <- lapply(lag_options, function(lag) create_io_matrices(normalized_training_data, lag))
 io_matrices_test <- lapply(lag_options, function(lag) create_io_matrices(normalized_testing_data, lag))
-
-
-
 
 
 # 3 Building and Evaluating MLP Models
@@ -117,7 +115,7 @@ train_and_evaluate_model <- function(input_matrix, output_matrix,
   # Define model structure
   model <- neuralnet(formula, data = cbind(input_matrix, output_matrix), 
                      hidden = hidden_layer_structure,
-                     linear.output = FALSE, 
+                     linear.output = TRUE, 
                      act.fct = activation_function)
   
   # Make predictions on testing data
@@ -130,16 +128,21 @@ train_and_evaluate_model <- function(input_matrix, output_matrix,
   
   # Calculate evaluation metrics
   rmse <- sqrt(mean((denormalized_predictions - denormalized_testing_outputs)^2))
+  
   mae <- mean(abs(denormalized_predictions - denormalized_testing_outputs))
+  
   mape <- mean(ifelse(denormalized_testing_outputs != 0, 
                       abs(denormalized_predictions - denormalized_testing_outputs) / denormalized_testing_outputs * 100, 0))
-  smape <- mean(abs(denormalized_predictions - denormalized_testing_outputs) / (abs(denormalized_predictions) + abs(denormalized_testing_outputs)) * 200)
+  
+  smape <- mean(abs(denormalized_predictions - denormalized_testing_outputs) / (abs(denormalized_predictions) 
+                                                                                + abs(denormalized_testing_outputs)) * 200)
   
   
   return(list(model = model, rmse = rmse, mae = mae, mape = mape, smape = smape, denormalized_predictions = denormalized_predictions))
 }
 
-hidden_layer_structure <- c(8,8)
+
+hidden_layer_structure <- c(12)
 
 # Experiment with different network structures and activation functions
 models <- list()
@@ -147,7 +150,7 @@ for (i in 1:length(io_matrices)) {
   input_matrix <- io_matrices[[i]]$input  # Access input matrix for current lag
   output_matrix <- io_matrices[[i]]$output  # Access output matrix for current lag
   testing_matrix <- io_matrices_test[[i]] # Access output matrix
-  for (activation in c("logistic")) {
+  for (activation in c("logistic", "tanh")) {
     # Call the function to train and evaluate the model
     model_result <- train_and_evaluate_model(input_matrix, output_matrix, 
                                              hidden_layer_structure, 
@@ -155,7 +158,7 @@ for (i in 1:length(io_matrices)) {
                                              testing_matrix, testing_data)
     
     # Append the model results to a list for each configuration
-    models[[paste(i, paste(hidden_layer_structure, collapse = "_"), activation, sep = "_")]] <- model_result
+    models[[paste(lag_options[i], paste(hidden_layer_structure, collapse = "_"), activation, sep = "_")]] <- model_result
   }
 }
 
@@ -170,16 +173,17 @@ for (model_name in names(models)) {
   cat("SMAPE:", models[[model_name]]$smape, "\n\n")
 }
 
+# Visualize model
 
-# get_model_by_name <- models[["1_2_3_logistic"]]
-# 
-# plot(get_model_by_name$model)
-# 
-# 
-# denormalized_testing_outputs <- denormalize(io_matrices_test[[1]]$output, testing_data)
-# 
-# # Plot predicted vs actual values
-# plot(denormalized_testing_outputs, type = "l", col = "blue", xlab = "Index", ylab = "Value", main = "Predicted vs Actual Values")
-# lines(get_model_by_name$denormalized_predictions, col = "red")
-# legend("topleft", legend = c("Actual", "Predicted"), col = c("blue", "red"), lty = 1)
+get_model_by_name <- models[["2_12_tanh"]]
+
+plot(get_model_by_name$model)
+
+
+denormalized_testing_outputs <- denormalize(io_matrices_test[[1]]$output, testing_data)
+
+# Plot predicted vs actual values
+plot(denormalized_testing_outputs, type = "l", col = "green", xlab = "Index", ylab = "Value", main = "Predicted vs Actual Values")
+lines(get_model_by_name$denormalized_predictions, col = "red")
+legend("topleft", legend = c("Actual Rate", "Predicted Rate"), col = c("green", "red"), lty = 1)
 
